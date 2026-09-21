@@ -46,7 +46,7 @@ backup_hub_data() {
   backup_file="$BACKUP_DIR/beszel_data-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
   partial_file="${backup_file}.partial"
   docker compose stop beszel >/dev/null
-  if ! tar -C "$DEPLOY_PATH" -czf "$partial_file" beszel_data; then
+  if ! sudo -n tar -C "$DEPLOY_PATH" -czf "$partial_file" beszel_data; then
     docker compose start beszel >/dev/null || true
     rm -f -- "$partial_file"
     printf '%s\n' 'Hub data backup failed; deployment stopped' >&2
