@@ -1,0 +1,66 @@
+services:
+  beszel:
+    image: henrygd/beszel:${BESZEL_VERSION:-0.20.0}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8090"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: edge-cf-ingress
+      traefik.http.routers.beszel.rule: Host(`beszel.tuannguyenviet.site`)
+      traefik.http.routers.beszel.entrypoints: web
+      traefik.http.routers.beszel.middlewares: tunnel-only@file,security-headers@file
+      traefik.http.services.beszel.loadbalancer.server.port: "8090"
+    healthcheck:
+      test: ["CMD", "/beszel", "health", "--url", "http://localhost:8090"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - ./beszel_data:/beszel_data
+      - ./beszel_socket:/beszel_socket
+    environment:
+      APP_URL: "${APP_URL:?set APP_URL}"
+      HEARTBEAT_URL: "${HEARTBEAT_URL:-}"
+      HEARTBEAT_INTERVAL: "60"
+      HEARTBEAT_METHOD: POST
+      USER_EMAIL: "${BESZEL_HUB_USER_EMAIL:-}"
+      USER_PASSWORD: "${BESZEL_HUB_USER_PASSWORD:-}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - edge-cf-ingress
+
+  beszel-agent:
+    image: henrygd/beszel-agent:${BESZEL_VERSION:-0.20.0}
+    restart: unless-stopped
+    network_mode: host
+    healthcheck:
+      test: ["CMD", "/agent", "health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - ./beszel_agent_data:/var/lib/beszel-agent
+      - ./beszel_socket:/beszel_socket
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      LISTEN: /beszel_socket/beszel.sock
+      HUB_URL: ""
+      TOKEN: "${BESZEL_AGENT_TOKEN:-}"
+      KEY: "${BESZEL_AGENT_KEY:-}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  edge-cf-ingress:
+    external: true
+    name: edge-cf-ingress

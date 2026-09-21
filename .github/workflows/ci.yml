@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Install heartbeat dependencies
+        run: npm --prefix heartbeat ci
+      - name: Check heartbeat
+        run: npm --prefix heartbeat run check
+      - name: Check Worker bundle
+        working-directory: heartbeat
+        run: ./node_modules/.bin/wrangler deploy src/index.js --dry-run --no-bundle
+      - name: Validate Compose
+        env:
+          APP_URL: http://127.0.0.1:8090
+          HEARTBEAT_URL: https://example.invalid/push/ci-placeholder
+          BESZEL_AGENT_TOKEN: ci-placeholder-token
+          BESZEL_AGENT_KEY: ci-placeholder-key
+        run: docker compose config

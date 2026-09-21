@@ -1,0 +1,41 @@
+name: Deploy heartbeat
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - heartbeat/**
+      - .github/workflows/deploy-heartbeat.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beszel-heartbeat-production
+  cancel-in-progress: false
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'push' || github.ref == 'refs/heads/main' }}
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Install heartbeat dependencies
+        run: npm --prefix heartbeat ci
+      - name: Check heartbeat
+        run: npm --prefix heartbeat run check
+      - name: Apply D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        working-directory: heartbeat
+        run: ./node_modules/.bin/wrangler d1 migrations apply beszel-heartbeat --remote
+      - name: Deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        working-directory: heartbeat
+        run: ./node_modules/.bin/wrangler deploy src/index.js

@@ -1,0 +1,15 @@
+{
+  "name": "beszel-heartbeat",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/index.js && node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "wrangler": "4.136.1"
+  }
+}

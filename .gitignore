@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+
+/beszel_data/
+/beszel_agent_data/
+/beszel_socket/
+
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+.zcode/

@@ -1,0 +1,83 @@
+name: Deploy VPS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - compose.yml
+      - scripts/deploy.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beszel-vps-production
+  cancel-in-progress: false
+
+env:
+  DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH || '/opt/beszel' }}
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' || github.event_name == 'push' }}
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${VPS_HOST:?VPS_HOST is required}"
+          : "${VPS_USER:?VPS_USER is required}"
+          : "${VPS_SSH_PRIVATE_KEY:?VPS_SSH_PRIVATE_KEY is required}"
+          : "${VPS_KNOWN_HOSTS:?VPS_KNOWN_HOSTS is required}"
+          case "$VPS_HOST" in
+            *[!A-Za-z0-9._:-]*) printf '%s\n' 'VPS_HOST contains unsupported characters' >&2; exit 1 ;;
+          esac
+          case "$VPS_USER" in
+            [A-Za-z_][A-Za-z0-9._-]*) ;;
+            *) printf '%s\n' 'VPS_USER contains unsupported characters' >&2; exit 1 ;;
+          esac
+          case "$DEPLOY_PATH" in
+            /*) ;;
+            *) printf '%s\n' 'VPS_DEPLOY_PATH must be absolute' >&2; exit 1 ;;
+          esac
+          case "$DEPLOY_PATH" in
+            *..*|*[!A-Za-z0-9_./-]*) printf '%s\n' 'VPS_DEPLOY_PATH contains unsupported characters' >&2; exit 1 ;;
+          esac
+          umask 077
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+          cat > "$HOME/.ssh/config" <<EOF
+          Host beszel-deploy
+            HostName $VPS_HOST
+            User $VPS_USER
+            IdentityFile $HOME/.ssh/id_ed25519
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile $HOME/.ssh/known_hosts
+          EOF
+          chmod 600 "$HOME/.ssh/config"
+          ssh beszel-deploy true
+
+      - name: Copy deployment files
+        run: |
+          set -euo pipefail
+          ssh beszel-deploy "mkdir -p '$DEPLOY_PATH/scripts'"
+          scp compose.yml "beszel-deploy:$DEPLOY_PATH/compose.yml"
+          scp scripts/deploy.sh "beszel-deploy:$DEPLOY_PATH/scripts/deploy.sh"
+          ssh beszel-deploy "chmod 700 '$DEPLOY_PATH/scripts/deploy.sh'"
+
+      - name: Deploy stack
+        run: ssh beszel-deploy "DEPLOY_PATH='$DEPLOY_PATH' '$DEPLOY_PATH/scripts/deploy.sh'"
