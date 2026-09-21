@@ -29,11 +29,51 @@ jobs:
         run: npm --prefix heartbeat ci
       - name: Check heartbeat
         run: npm --prefix heartbeat run check
+      - name: Ensure heartbeat D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        working-directory: heartbeat
+        run: |
+          set -euo pipefail
+          : "${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN is required}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?CLOUDFLARE_ACCOUNT_ID is required}"
+          endpoint="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database"
+          response="$(curl --fail-with-body --silent --show-error --request GET --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "$endpoint?per_page=100")"
+          printf '%s' "$response" | jq -e '.success == true' >/dev/null
+          database_id="$(printf '%s' "$response" | jq -r '.result[] | select(.name == "beszel-heartbeat") | .uuid' | head -n 1)"
+          if [ -z "$database_id" ] || [ "$database_id" = "null" ]; then
+            response="$(curl --fail-with-body --silent --show-error --request POST --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" --header 'Content-Type: application/json' --data '{"name":"beszel-heartbeat"}' "$endpoint")"
+            printf '%s' "$response" | jq -e '.success == true' >/dev/null
+            database_id="$(printf '%s' "$response" | jq -r '.result.uuid')"
+          fi
+          case "$database_id" in
+            ''|null|00000000-0000-0000-0000-000000000000) printf '%s\n' 'D1 database ID unavailable' >&2; exit 1 ;;
+          esac
+          python3 - "$database_id" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path("wrangler.jsonc")
+          text = path.read_text()
+          placeholder = "00000000-0000-0000-0000-000000000000"
+          if placeholder not in text:
+              raise SystemExit("wrangler.jsonc already has a non-placeholder database_id")
+          path.write_text(text.replace(placeholder, sys.argv[1], 1))
+          PY
       - name: Apply D1 migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         working-directory: heartbeat
         run: ./node_modules/.bin/wrangler d1 migrations apply beszel-heartbeat --remote
+      - name: Set Worker secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PUSH_SECRET: ${{ secrets.PUSH_SECRET }}
+        working-directory: heartbeat
+        run: |
+          set -euo pipefail
+          : "${PUSH_SECRET:?PUSH_SECRET is required}"
+          printf '%s' "$PUSH_SECRET" | ./node_modules/.bin/wrangler secret put PUSH_SECRET
       - name: Deploy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
