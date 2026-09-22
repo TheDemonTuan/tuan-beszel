@@ -85,7 +85,7 @@ tuan-beszel/
 - Agent image `henrygd/beszel-agent:0.20.0`, `network_mode: host` theo hướng dẫn chính thức, volume dữ liệu cần thiết, `restart: unless-stopped`; system `Main VPS` hiện `up`.
 - Shared socket mount vào cả hai container tại `/beszel_socket/beszel.sock`.
 - Compose dùng healthcheck chính thức `/beszel health --url http://localhost:8090` và `/agent health`; deploy chờ cả hai healthy.
-- Hub publish `127.0.0.1:8090:8090`, không publish dashboard ra Internet.
+- Hub không publish host port; Traefik trên `edge-cf-ingress` chuyển tiếp nội bộ tới container port `8090`.
 - Chỉ mount Docker socket khi cần Docker metrics. `:ro` không biến Docker API thành read-only; Agent vẫn là component có quyền nhạy cảm. Không dùng `privileged` hoặc mount host thừa.
 
 ### Bootstrap lần đầu
@@ -100,13 +100,7 @@ Thực hiện đúng thứ tự:
    docker compose up -d beszel
    ```
 
-3. Mở SSH tunnel, không mở port dashboard:
-
-   ```bash
-   ssh -N -T -L 8090:127.0.0.1:8090 <SSH_USER>@<VPS_HOST>
-   ```
-
-   Truy cập `http://127.0.0.1:8090` trên máy quản trị.
+3. Truy cập dashboard qua route đã bảo vệ `https://beszel.tuannguyenviet.site`. Không mở hoặc publish port Hub trên host.
 
 4. Nếu đã set cả `BESZEL_HUB_USER_EMAIL` và `BESZEL_HUB_USER_PASSWORD`, Beszel tự tạo admin ở lần khởi động đầu; sau khi xác nhận đăng nhập, xóa hai biến khỏi `.env`. Nếu không set, tạo admin qua giao diện.
 5. Thêm system `Main VPS`. Chọn địa chỉ Agent Unix socket chính xác:
