@@ -2,8 +2,6 @@ services:
   beszel:
     image: henrygd/beszel:${BESZEL_VERSION:-0.20.0}
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:8090:8090"
     labels:
       traefik.enable: "true"
       traefik.docker.network: edge-cf-ingress
