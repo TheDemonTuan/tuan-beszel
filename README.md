@@ -9,8 +9,8 @@ Beszel đã triển khai trên VPS hiện hữu tại `/opt/beszel`:
 - Dashboard: `https://beszel.tuannguyenviet.site`
 - Hub + Agent: healthy, image `0.20.0`
 - System: `Main VPS`, Unix socket, status `up`
-- Heartbeat Worker/D1: source và workflow đã sẵn sàng nhưng chưa deploy vì Cloudflare token được cung cấp thiếu quyền ghi D1/Workers.
-- UptimeFlare repo private đã tạo; config gồm app monitors + hai heartbeat monitor trên `beszel-heartbeat.nguyenviettuanbp.workers.dev`, chờ Worker tồn tại.
+- Heartbeat Worker/D1: deployed; public checks dùng custom domain `beszel-heartbeat.tuannguyenviet.site`.
+- UptimeFlare repo public đã deploy Pages + Worker cron + D1; config gồm app monitors và hai heartbeat monitor.
 - Token đã lộ trong chat, cần revoke thủ công rồi tạo token mới.
 
 Workspace chứa source/deployment template. UptimeFlare vẫn phải tạo ở repository riêng từ official template. Máy local không có Docker; Worker test và Wrangler dry-run đã chạy.
