@@ -34,6 +34,7 @@ services:
         max-file: "3"
     networks:
       - edge-cf-ingress
+      - beszel-egress
 
   beszel-agent:
     image: henrygd/beszel-agent:${BESZEL_VERSION:-0.20.0}
@@ -64,3 +65,5 @@ networks:
   edge-cf-ingress:
     external: true
     name: edge-cf-ingress
+  beszel-egress:
+    driver: bridge
