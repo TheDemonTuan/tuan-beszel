@@ -25,4 +25,18 @@ jobs:
           HEARTBEAT_URL: https://example.invalid/push/ci-placeholder
           BESZEL_AGENT_TOKEN: ci-placeholder-token
           BESZEL_AGENT_KEY: ci-placeholder-key
-        run: docker compose config
+        run: |
+          docker compose config --quiet
+          docker compose config --format json | node -e '
+            const assert = require("node:assert/strict");
+            let input = "";
+            process.stdin.on("data", chunk => input += chunk);
+            process.stdin.on("end", () => {
+              const config = JSON.parse(input);
+              const hub = config.services.beszel;
+              assert.deepEqual(Object.keys(hub.networks).sort(), ["beszel-egress", "beszel-traefik"]);
+              assert.equal(hub.labels["traefik.docker.network"], "beszel-traefik");
+              assert.equal(config.networks["beszel-traefik"].name, "beszel-traefik");
+              assert.equal(config.networks["beszel-traefik"].external, true);
+            });
+          '

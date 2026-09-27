@@ -36,6 +36,7 @@ if [ "$REQUIRE_PRODUCTION" = 1 ]; then
 fi
 
 docker compose config --quiet
+docker network inspect --format '{{.Name}}' beszel-traefik
 
 backup_hub_data() {
   local container_id backup_file partial_file

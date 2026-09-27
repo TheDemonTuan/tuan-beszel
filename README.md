@@ -23,7 +23,7 @@ Workspace chứa source/deployment template. UptimeFlare vẫn phải tạo ở 
   - `henrygd/beszel-agent:0.20.0`
 - UptimeFlare nằm ở repository riêng (`tuan-uptimeflare`), tạo từ official template. Chỉ cấu hình monitor; không sửa core template.
 - Heartbeat là Cloudflare Worker + D1 độc lập, không dùng UptimeFlare D1.
-- Beszel Hub và Agent chạy cùng VPS. Hub chỉ bind `127.0.0.1:8090`.
+- Beszel Hub và Agent chạy cùng VPS. Hub không publish cổng host; Traefik kết nối Hub trên `beszel-traefik`.
 - Hub và Agent dùng Unix socket `/beszel_socket/beszel.sock`; không mở TCP `45876`.
 - Heartbeat gửi mỗi `60s`; Worker coi dữ liệu stale sau `150s`.
 - Cloudflare cron của UptimeFlare chạy mỗi phút. GitHub Actions chỉ deploy, không làm lịch heartbeat.
@@ -85,8 +85,27 @@ tuan-beszel/
 - Agent image `henrygd/beszel-agent:0.20.0`, `network_mode: host` theo hướng dẫn chính thức, volume dữ liệu cần thiết, `restart: unless-stopped`; system `Main VPS` hiện `up`.
 - Shared socket mount vào cả hai container tại `/beszel_socket/beszel.sock`.
 - Compose dùng healthcheck chính thức `/beszel health --url http://localhost:8090` và `/agent health`; deploy chờ cả hai healthy.
-- Hub không publish host port; Traefik trên `edge-cf-ingress` chuyển tiếp nội bộ tới container port `8090`.
+- Hub không publish host port; Traefik chuyển tiếp tới container port `8090` qua mạng riêng `beszel-traefik`. Hub vẫn dùng `beszel-egress` để gửi heartbeat; không gắn Hub vào `edge-cf-ingress` cùng cloudflared.
 - Chỉ mount Docker socket khi cần Docker metrics. `:ro` không biến Docker API thành read-only; Agent vẫn là component có quyền nhạy cảm. Không dùng `privileged` hoặc mount host thừa.
+
+### Chuyển mạng Traefik/Beszel trên VPS
+
+`beszel-traefik` là mạng Docker external: tạo một lần, không để Compose Beszel tự tạo mạng theo tên project. Cấu hình Traefik nằm ngoài repo này; **hoàn tất trên VPS trước khi merge/push thay đổi `compose.yml`** (push `main` sẽ tự deploy Beszel). Giữ nguyên `edge-cf-ingress` cho Traefik và cloudflared, không nối cloudflared vào mạng mới.
+
+1. `docker network create beszel-traefik` (nếu mạng chưa tồn tại). Trong Compose quản lý Traefik, **thêm** `beszel-traefik` vào `networks` của service Traefik, giữ mọi mạng đang có; khai báo top-level:
+
+   ```yaml
+   networks:
+     beszel-traefik:
+       external: true
+       name: beszel-traefik
+   ```
+
+   Áp dụng stack Traefik theo quy trình hiện có; `docker network inspect beszel-traefik` phải cho thấy container Traefik. `docker network connect` đơn lẻ không đủ: kết nối sẽ mất khi Traefik được recreate. Không gỡ Traefik khỏi `edge-cf-ingress` vì cloudflared vẫn cần tới Traefik.
+2. Sau khi Traefik đã trên mạng mới, deploy Compose Beszel phiên bản này. `traefik.docker.network` chọn `beszel-traefik`; Compose sẽ gỡ Hub khỏi `edge-cf-ingress` khi recreate. Không gỡ thủ công mạng cũ khi các dịch vụ khác còn dùng.
+3. Xác nhận bằng `docker inspect -f '{{json .NetworkSettings.Networks}}' "$(docker compose ps -q beszel)"` tại `/opt/beszel`: chỉ thấy `beszel-traefik` và mạng `beszel-egress`, không có `edge-cf-ingress`. Kiểm tra Traefik và Beszel cùng xuất hiện trong `docker network inspect beszel-traefik`, cloudflared không xuất hiện; kiểm tra dashboard qua route HTTPS đã xác thực và cả Hub/Agent healthy. Nếu route lỗi, khôi phục Compose Beszel bản cũ và deploy lại trước khi tháo mạng mới khỏi Traefik.
+
+Khi bootstrap máy mới, thực hiện bước 1 trước `docker compose up -d beszel` bên dưới.
 
 ### Bootstrap lần đầu
 
@@ -233,7 +252,7 @@ Tên secret/variable dùng thống nhất:
 
 ### `ci.yml`
 
-Chạy trên pull request và push phù hợp; không nhận production secrets. Kiểm tra Compose bằng giá trị giả, chạy Node tests cho heartbeat và kiểm tra Worker build/config bằng Wrangler trong CI runner có toolchain. Pull request không được deploy production.
+Chạy trên pull request và push phù hợp; không nhận production secrets. Kiểm tra Compose và mạng riêng của Hub bằng giá trị giả, chạy Node tests cho heartbeat và kiểm tra Worker build/config bằng Wrangler trong CI runner có toolchain. Pull request không được deploy production.
 
 ### `deploy-vps.yml`
 
