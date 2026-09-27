@@ -1,6 +1,6 @@
 # Beszel Infrastructure Runbook
 
-Runbook cho hạ tầng riêng tư gồm Beszel, heartbeat Cloudflare và UptimeFlare.
+Runbook cho Beszel Hub/Agent và heartbeat Cloudflare Worker/D1 của repository này.
 
 ## Trạng thái hiện tại
 
@@ -10,10 +10,10 @@ Beszel đã triển khai trên VPS hiện hữu tại `/opt/beszel`:
 - Hub + Agent: healthy, image `0.20.0`
 - System: `Main VPS`, Unix socket, status `up`
 - Heartbeat Worker/D1: deployed; public checks dùng custom domain `beszel-heartbeat.tuannguyenviet.site`.
-- UptimeFlare repo public đã deploy Pages + Worker cron + D1; config gồm app monitors và hai heartbeat monitor.
-- Token đã lộ trong chat, cần revoke thủ công rồi tạo token mới.
+- Status công khai cho consumer độc lập: `https://beszel-heartbeat.tuannguyenviet.site/status/beszel-main/live` và `/status/beszel-main/systems`.
+- Token từng lộ trong chat phải được thu hồi/rotate trước khi dùng lại.
 
-Workspace chứa source/deployment template. UptimeFlare vẫn phải tạo ở repository riêng từ official template. Máy local không có Docker; Worker test và Wrangler dry-run đã chạy.
+Workspace chứa Compose và heartbeat source. Status page là consumer độc lập tại https://github.com/TheDemonTuan/tuan-uptimeflare; repo này không deploy status page.
 
 ## Kiến trúc đã duyệt
 
@@ -21,12 +21,11 @@ Workspace chứa source/deployment template. UptimeFlare vẫn phải tạo ở 
 - Không fork Beszel. Dùng image chính thức, ghim cùng version `0.20.0`:
   - `henrygd/beszel:0.20.0`
   - `henrygd/beszel-agent:0.20.0`
-- UptimeFlare nằm ở repository riêng (`tuan-uptimeflare`), tạo từ official template. Chỉ cấu hình monitor; không sửa core template.
+- Status page https://github.com/TheDemonTuan/tuan-uptimeflare tiêu thụ heartbeat công khai; không thuộc pipeline repo này.
 - Heartbeat là Cloudflare Worker + D1 độc lập, không dùng UptimeFlare D1.
 - Beszel Hub và Agent chạy cùng VPS. Hub không publish cổng host; Traefik kết nối Hub trên `beszel-traefik`.
 - Hub và Agent dùng Unix socket `/beszel_socket/beszel.sock`; không mở TCP `45876`.
 - Heartbeat gửi mỗi `60s`; Worker coi dữ liệu stale sau `150s`.
-- Cloudflare cron của UptimeFlare chạy mỗi phút. GitHub Actions chỉ deploy, không làm lịch heartbeat.
 
 ```text
 Private repo tuan-beszel
@@ -36,19 +35,18 @@ Private repo tuan-beszel
   Heartbeat Worker + Heartbeat D1
        ^ GET /status/beszel-main/live
        ^ GET /status/beszel-main/systems
-       |
-Private repo tuan-uptimeflare
-  UptimeFlare Worker cron mỗi phút + UptimeFlare D1 + Pages
+       | GET công khai từ consumer độc lập
+       v
+  https://github.com/TheDemonTuan/tuan-uptimeflare
 ```
 
 ## Prerequisites
 
 - VPS Linux, kiến trúc `amd64` hoặc `arm64`, Docker Engine và Docker Compose plugin.
 - User SSH có quyền triển khai; host key VPS đã xác minh. Không mở SSH mới cho GitHub Actions nếu đã có tuyến quản trị an toàn.
-- Domain HTTPS cho heartbeat/status và các ứng dụng cần monitor; DNS/Cloudflare zone đã xác định.
-- Cloudflare account có quyền tạo Worker, D1, secret và deploy; xác định Account ID thật.
-- GitHub private repositories, protected `main`, Actions enabled, environment protection nếu cần.
-- Kênh nhận alert đã được chọn. Không đặt webhook/token thật trong source.
+- Domain HTTPS cho heartbeat và Cloudflare zone đã xác định.
+- Cloudflare account có quyền tạo heartbeat Worker, D1, secret và deploy; xác định Account ID thật.
+- GitHub private repository, protected `main`, Actions enabled, environment protection nếu cần.
 - Xác nhận disk, backup destination ngoài VPS, cổng đang dùng và route SSH trước bootstrap.
 
 ## Cây local mục tiêu
@@ -75,7 +73,7 @@ tuan-beszel/
 
 `deploy-heartbeat.yml` chạy migration D1 remote rồi deploy Worker. Cần tạo D1 thật, thay `database_id` placeholder trong `heartbeat/wrangler.jsonc`, rồi set `CLOUDFLARE_API_TOKEN` và `CLOUDFLARE_ACCOUNT_ID` trong GitHub Environment `production`.
 
-`.env` chỉ tồn tại trên VPS hoặc máy quản trị đã bảo vệ, nằm trong `.gitignore`; không commit. `tuan-uptimeflare` là repository khác, không tạo file UptimeFlare trong repo này.
+`.env` chỉ tồn tại trên VPS hoặc máy quản trị đã bảo vệ, nằm trong `.gitignore`; không commit. Repo này chỉ sở hữu Beszel và heartbeat producer.
 
 ## Beszel trên VPS
 
@@ -196,43 +194,9 @@ npx wrangler deploy
 
 Heartbeat URL chỉ được cấu hình trên VPS/Beszel theo implementation thực tế. Nhịp gửi mục tiêu là `60s`; không thêm `gracePeriod` ở bản đầu. TTL `150s` đã bao gồm khoảng trễ cần thiết, nên stale thường được phát hiện khoảng `150-210s` sau heartbeat cuối, tùy jitter.
 
-## UptimeFlare repository riêng
+## Hợp đồng heartbeat công khai
 
-1. Tạo `tuan-uptimeflare` từ official UptimeFlare template; không fork Beszel và không copy core sang repo này.
-2. Giữ deployment chính thức gồm Cloudflare Pages, Worker cron mỗi phút và UptimeFlare D1.
-3. Chỉ sửa cấu hình monitor (`uptime.config.ts` hoặc file config tương ứng của template). Không thêm heartbeat bridge vào core.
-4. Sync upstream thủ công ở bản đầu, review diff rồi deploy. Không tự sync hằng ngày vì upstream sync có thể ghi đè file custom.
-
-Snippet monitor cần điền vào config UptimeFlare, thay `<HEARTBEAT_DOMAIN>` bằng domain thật:
-
-```ts
-{
-  id: "beszel-main-live",
-  name: "Main VPS Heartbeat",
-  target: "https://<HEARTBEAT_DOMAIN>/status/beszel-main/live",
-  method: "GET",
-  expectedCodes: [200],
-  timeout: 5000, // milliseconds
-  responseKeyword: "healthy",
-  // Không khai báo gracePeriod ở bản đầu.
-},
-{
-  id: "beszel-main-systems",
-  name: "Beszel Systems",
-  target: "https://<HEARTBEAT_DOMAIN>/status/beszel-main/systems",
-  method: "GET",
-  expectedCodes: [200],
-  timeout: 5000, // milliseconds
-  responseKeyword: "healthy",
-  // Không khai báo gracePeriod ở bản đầu.
-},
-```
-
-- Chỉ thêm monitor ứng dụng có URL thật và endpoint đã xác minh; không tạo placeholder luôn DOWN. Monitor dùng `target`; `url` chỉ dành cho webhook notification.
-- Public group chỉ hiển thị ứng dụng cần công khai. Việc ẩn monitor infrastructure khỏi group không bảo vệ dữ liệu: API UptimeFlare vẫn có thể trả trạng thái/data của monitor.
-- Nếu cần hạn chế truy cập status page/group, bật password protection theo cơ chế của template. Password protection không thay thế việc giữ secret ngoài source.
-- Không đưa heartbeat secret, Cloudflare token, webhook token hoặc credentials vào `uptime.config.ts`, frontend bundle, Actions log hoặc Worker log. Trong UptimeFlare, `target` là field monitor; `url` chỉ dùng cho webhook notification. Dùng upstream đã vá advisory `GHSA-36q9-v7p3-vj6v`; nếu từng chạy bản lỗi, rotate mọi credential.
-- Bật alert DOWN/recovery cho app, heartbeat và systems. Resource alert từ Beszel vẫn là cảnh báo riêng, không đồng nhất với DOWN.
+Consumer độc lập https://github.com/TheDemonTuan/tuan-uptimeflare đọc `GET https://beszel-heartbeat.tuannguyenviet.site/status/beszel-main/live` và `GET https://beszel-heartbeat.tuannguyenviet.site/status/beszel-main/systems`. Khi khỏe, cả hai trả `200` với body `healthy`; stale, lỗi D1 hoặc lỗi hệ thống tương ứng trả `503`. Không chuyển quyền deploy/config status page hoặc alert vào repository Beszel.
 
 ## GitHub Actions
 
@@ -244,11 +208,11 @@ Tên secret/variable dùng thống nhất:
 | `VPS_USER` | variable | `deploy-vps.yml` |
 | `VPS_SSH_PRIVATE_KEY` | secret | `deploy-vps.yml` |
 | `VPS_KNOWN_HOSTS` | secret | `deploy-vps.yml` |
-| `CLOUDFLARE_ACCOUNT_ID` | secret | Worker/UptimeFlare deploy |
-| `CLOUDFLARE_API_TOKEN` | secret | Worker/UptimeFlare deploy |
+| `CLOUDFLARE_ACCOUNT_ID` | secret | `deploy-heartbeat.yml` |
+| `CLOUDFLARE_API_TOKEN` | secret | `deploy-heartbeat.yml` |
 | `PUSH_SECRET` | Worker secret | Set một lần bằng `wrangler secret put PUSH_SECRET`; không commit hoặc in trong Actions log |
 
-`CLOUDFLARE_API_TOKEN` chỉ có quyền tối thiểu trên account đích. `VPS_KNOWN_HOSTS` phải được thu thập từ host key đã xác minh; không tắt host-key checking. `deploy-vps.yml` yêu cầu GitHub Environment `production`; `VPS_DEPLOY_PATH` phải là absolute path an toàn, mặc định `/opt/beszel`. Tên secret của upstream UptimeFlare phải khớp workflow upstream nếu template dùng tên khác.
+`CLOUDFLARE_API_TOKEN` chỉ có quyền tối thiểu trên account đích. `VPS_KNOWN_HOSTS` phải được thu thập từ host key đã xác minh; không tắt host-key checking. `deploy-vps.yml` yêu cầu GitHub Environment `production`; `VPS_DEPLOY_PATH` phải là absolute path an toàn, mặc định `/opt/beszel`.
 
 ### `ci.yml`
 
@@ -271,9 +235,6 @@ Chạy trên pull request và push phù hợp; không nhận production secrets.
 - Không thay secret Worker trong mỗi deploy trừ khi có bước rotation được review. Không in secret vào log.
 - Dùng `CLOUDFLARE_ACCOUNT_ID` và `CLOUDFLARE_API_TOKEN`; kiểm tra status endpoint sau deploy.
 
-### UptimeFlare Actions
-
-Dùng workflow deployment của official template trong `tuan-uptimeflare`; không tạo pipeline thay thế khi upstream đã đáp ứng. Review thủ công khi sync upstream, sau đó deploy bằng credentials tối thiểu.
 
 ## Update, rollback và backup
 
@@ -295,13 +256,10 @@ Chạy trong maintenance window đã được phê duyệt; không dừng dịch
 4. `total=0`, `pending>0`, `paused>0` hoặc `down>0` làm `/systems` trả `503`.
 5. Resource status `warn` khi Agent vẫn up không làm `/live` hoặc `/systems` báo DOWN.
 6. Dừng Agent có kiểm soát: `/live` còn UP, `/systems` DOWN sau policy; dừng Hub: cả hai DOWN sau TTL.
-7. UptimeFlare monitor dùng đúng `target`, `expectedCodes: [200]`, `timeout: 5000`, `responseKeyword: "healthy"`, không có `gracePeriod`.
-8. Xác nhận notification DOWN và recovery thực sự tới kênh nhận, không chỉ nhìn status page.
-9. Recreate container vẫn giữ dữ liệu; backup restore thành công trong môi trường tách biệt.
-10. Secret không xuất hiện trong Git, Actions log, Worker log, API công khai hoặc frontend bundle.
-11. Chỉ public hóa app monitors; kiểm tra password protection và xác nhận API exposure đã được chấp nhận có chủ đích.
-12. Kiểm tra HTTPS, DNS, SSH tunnel admin và persistence sau deploy.
-13. UptimeFlare dùng bản đã vá `GHSA-36q9-v7p3-vj6v` (commit `377a5963c66ba9a798abfe8d80378b053435e9`); rotate credentials nếu từng chạy bản lỗi.
+7. Xác nhận hai endpoint heartbeat công khai trả `200` và `healthy` khi khỏe; không lộ hệ thống nội bộ trong response.
+8. Recreate container vẫn giữ dữ liệu; backup restore thành công trong môi trường tách biệt.
+9. Secret không xuất hiện trong Git, Actions log, Worker log hoặc API công khai.
+10. Kiểm tra HTTPS, DNS, SSH tunnel admin và persistence sau deploy.
 
 ## Tài liệu chính thức
 
@@ -310,9 +268,6 @@ Chạy trong maintenance window đã được phê duyệt; không dừng dịch
 - Beszel security: https://beszel.dev/guide/security
 - Beszel Hub image: https://hub.docker.com/r/henrygd/beszel
 - Beszel Agent image: https://hub.docker.com/r/henrygd/beszel-agent
-- UptimeFlare official template: https://github.com/lyc8503/UptimeFlare
-- UptimeFlare quickstart: https://github.com/lyc8503/UptimeFlare/wiki/Quickstart
-- UptimeFlare upstream sync: https://github.com/lyc8503/UptimeFlare/wiki/Synchronize-updates-from-upstream
 - Cloudflare D1: https://developers.cloudflare.com/d1/
 - Wrangler D1 commands: https://developers.cloudflare.com/workers/wrangler/commands/#d1
 - Cloudflare Worker secrets: https://developers.cloudflare.com/workers/configuration/secrets/
