@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     labels:
       traefik.enable: "true"
-      traefik.docker.network: edge-cf-ingress
+      traefik.docker.network: beszel-traefik
       traefik.http.routers.beszel.rule: Host(`beszel.tuannguyenviet.site`)
       traefik.http.routers.beszel.entrypoints: web
       traefik.http.routers.beszel.middlewares: tunnel-only@file,security-headers@file
@@ -31,7 +31,7 @@ services:
         max-size: "10m"
         max-file: "3"
     networks:
-      - edge-cf-ingress
+      - beszel-traefik
       - beszel-egress
 
   beszel-agent:
@@ -60,8 +60,8 @@ services:
         max-file: "3"
 
 networks:
-  edge-cf-ingress:
+  beszel-traefik:
     external: true
-    name: edge-cf-ingress
+    name: beszel-traefik
   beszel-egress:
     driver: bridge
