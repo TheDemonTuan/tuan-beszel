@@ -1,6 +1,6 @@
 services:
   beszel:
-    image: henrygd/beszel:${BESZEL_VERSION:-0.20.0}
+    image: henrygd/beszel:0.21.2
     restart: unless-stopped
     labels:
       traefik.enable: "true"
@@ -35,7 +35,7 @@ services:
       - beszel-egress
 
   beszel-agent:
-    image: henrygd/beszel-agent:${BESZEL_VERSION:-0.20.0}
+    image: henrygd/beszel-agent:0.21.2
     restart: unless-stopped
     network_mode: host
     healthcheck:

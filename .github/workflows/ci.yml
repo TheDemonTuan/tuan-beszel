@@ -34,6 +34,10 @@ jobs:
             process.stdin.on("end", () => {
               const config = JSON.parse(input);
               const hub = config.services.beszel;
+              const tag = hub.image.match(/^henrygd\/beszel:(\d+\.\d+\.\d+)(?:@sha256:[a-f0-9]{64})?$/)?.[1];
+              const agentTag = config.services["beszel-agent"].image.match(/^henrygd\/beszel-agent:(\d+\.\d+\.\d+)(?:@sha256:[a-f0-9]{64})?$/)?.[1];
+              assert.ok(tag, "Beszel Hub must use a pinned stable tag");
+              assert.equal(agentTag, tag, "Beszel Hub and Agent must use the same release tag");
               assert.deepEqual(Object.keys(hub.networks).sort(), ["beszel-egress", "beszel-traefik"]);
               assert.equal(hub.labels["traefik.docker.network"], "beszel-traefik");
               assert.equal(config.networks["beszel-traefik"].name, "beszel-traefik");
