@@ -7,7 +7,7 @@ Runbook cho Beszel Hub/Agent và heartbeat Cloudflare Worker/D1 của repository
 Beszel đã triển khai trên VPS hiện hữu tại `/opt/beszel`:
 
 - Dashboard: `https://beszel.tuannguyenviet.site`
-- Hub + Agent: healthy, image `0.20.0`
+- Hub + Agent: healthy, image `0.21.2`
 - System: `Main VPS`, Unix socket, status `up`
 - Heartbeat Worker/D1: deployed; public checks dùng custom domain `beszel-heartbeat.tuannguyenviet.site`.
 - Status công khai cho consumer độc lập: `https://beszel-heartbeat.tuannguyenviet.site/status/beszel-main/live` và `/status/beszel-main/systems`.
@@ -18,9 +18,7 @@ Workspace chứa Compose và heartbeat source. Status page là consumer độc l
 ## Kiến trúc đã duyệt
 
 - Repository này (`tuan-beszel`) là private infrastructure repo.
-- Không fork Beszel. Dùng image chính thức, ghim cùng version `0.20.0`:
-  - `henrygd/beszel:0.20.0`
-  - `henrygd/beszel-agent:0.20.0`
+- Không fork Beszel. Hub và Agent dùng image chính thức, ghim cùng release trong `compose.yml`.
 - Status page https://github.com/TheDemonTuan/tuan-uptimeflare tiêu thụ heartbeat công khai; không thuộc pipeline repo này.
 - Heartbeat là Cloudflare Worker + D1 độc lập, không dùng UptimeFlare D1.
 - Beszel Hub và Agent chạy cùng VPS. Hub không publish cổng host; Traefik kết nối Hub trên `beszel-traefik`.
@@ -79,8 +77,8 @@ tuan-beszel/
 
 Đặt stack tại `/opt/beszel`, tách khỏi stack ứng dụng khác. Compose phải giữ các contract sau:
 
-- Hub image `henrygd/beszel:0.20.0`, volume dữ liệu persistent, `restart: unless-stopped`, log có giới hạn. Đã triển khai tại `/opt/beszel` trên VPS hiện hữu.
-- Agent image `henrygd/beszel-agent:0.20.0`, `network_mode: host` theo hướng dẫn chính thức, volume dữ liệu cần thiết, `restart: unless-stopped`; system `Main VPS` hiện `up`.
+- Hub image `henrygd/beszel`, volume dữ liệu persistent, `restart: unless-stopped`, log có giới hạn.
+- Agent image `henrygd/beszel-agent`, `network_mode: host`, volume dữ liệu cần thiết; system `Main VPS` hiện `up`.
 - Shared socket mount vào cả hai container tại `/beszel_socket/beszel.sock`.
 - Compose dùng healthcheck chính thức `/beszel health --url http://localhost:8090` và `/agent health`; deploy chờ cả hai healthy.
 - Hub không publish host port; Traefik chuyển tiếp tới container port `8090` qua mạng riêng `beszel-traefik`. Hub vẫn dùng `beszel-egress` để gửi heartbeat; không gắn Hub vào `edge-cf-ingress` cùng cloudflared.
@@ -238,7 +236,7 @@ Chạy trên pull request và push phù hợp; không nhận production secrets.
 
 ## Update, rollback và backup
 
-- Version production ban đầu là `0.20.0`; mọi nâng version đi qua PR, test và merge. Không dùng `latest`.
+- `compose.yml` là nguồn version production cho cả hai image; `BESZEL_VERSION` trong `.env` không còn ghi đè. Renovate đề xuất nâng cả hai image trong cùng PR, qua CI và review trước deploy. Không dùng `latest`.
 - Trước update Beszel, workflow yêu cầu `.env` production hợp lệ và tạo backup Hub dưới `$BACKUP_DIR` (mặc định `/opt/beszel/backups`) bằng cách dừng Hub ngắn hạn; không tar database đang ghi. Backup local chỉ là rollback aid, vẫn cần copy ra đích ngoài VPS.
 - Sao lưu tới đích ngoài VPS và thử restore trong môi trường tách biệt trước nghiệm thu production. D1 backup/export tuân theo khả năng và chính sách Cloudflare đã chọn.
 - Deploy lỗi: giữ volume và dữ liệu, đánh dấu workflow fail, không `docker compose down -v`, không prune volume.

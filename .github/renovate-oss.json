@@ -1,0 +1,10 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "packageRules": [
+    {
+      "matchManagers": ["docker-compose"],
+      "matchPackageNames": ["henrygd/beszel", "henrygd/beszel-agent"],
+      "groupName": "Beszel Hub and Agent"
+    }
+  ]
+}
