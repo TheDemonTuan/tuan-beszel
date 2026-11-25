@@ -29,9 +29,6 @@ require_env_value() {
 
 if [ "$REQUIRE_PRODUCTION" = 1 ]; then
   require_env_value APP_URL
-  if [ "${REQUIRE_HEARTBEAT:-0}" = 1 ]; then
-    require_env_value HEARTBEAT_URL
-  fi
   require_env_value BESZEL_AGENT_KEY
 fi
 
